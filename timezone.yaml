@@ -1,0 +1,8 @@
+---
+- name: Configure Timezone America/Bogota
+  hosts: all
+
+  tasks:
+    - name: Set Timezone
+      timezone:
+        name: America/Bogota

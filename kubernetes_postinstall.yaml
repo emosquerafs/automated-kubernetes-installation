@@ -1,0 +1,45 @@
+# Al arecer no se necesita en add controll plane ya estan"
+- name: Install kubernetes
+  hosts: controller
+  
+  tasks:
+    - name: Fetch admin.conf from first controller node
+      fetch:
+        src: /etc/kubernetes/admin.conf
+        dest: /tmp/admin.conf
+        flat: yes
+      when: inventory_hostname == groups['controller'][0]
+      become: yes
+    
+    - name: Copy kubeconfig to user home directory on controller
+      block:
+        - name: Create .kube directory in home directory
+          file:
+            path: "{{ ansible_env.HOME }}/.kube"
+            state: directory
+            mode: '0755'
+        
+        - name: Copy admin.conf to other controller nodes
+          copy:
+            src: /tmp/admin.conf
+            dest: /etc/kubernetes/admin.conf
+            mode: '0600'
+          when: inventory_hostname in groups['controller'] and inventory_hostname != groups['controller'][0]
+          become: yes
+
+        - name: Copy admin.conf to user's kubeconfig
+          copy:
+            src: /etc/kubernetes/admin.conf
+            dest: "{{ ansible_env.HOME }}/.kube/config"
+            remote_src: yes
+            mode: '0644'
+          become: yes
+
+        - name: Set proper ownership of kubeconfig
+          file:
+            path: "{{ ansible_env.HOME }}/.kube/config"
+            owner: "{{ ansible_user }}"
+            group: "{{ ansible_user_id }}"
+            mode: '0600'
+          become: yes
+      when: inventory_hostname in groups['controller']

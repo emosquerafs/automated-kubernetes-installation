@@ -1,0 +1,7 @@
+[controller]
+dev-controlplane-01 ansible_host=172.100.0.200 ansible_user=sysadmin ansible_ssh_private_key_file=/path/to/ssh/key/privatekey
+dev-controlplane-02 ansible_host=172.100.0.201 ansible_user=sysadmin ansible_ssh_private_key_file=/path/to/ssh/key/privatekey
+
+[worker]
+dev-workernode-01 ansible_host=172.100.0.202  ansible_user=sysadmin ansible_ssh_private_key_file=/path/to/ssh/key/privatekey
+dev-workernode-02 ansible_host=172.100.0.203  ansible_user=sysadmin ansible_ssh_private_key_file=/path/to/ssh/key/privatekey

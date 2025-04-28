@@ -1,0 +1,91 @@
+---
+- name: Install Helm and Cilium
+  hosts: controller[0]
+  become: true
+  tasks:
+    - name: Download Helm installation script
+      get_url:
+        url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+        dest: /tmp/get_helm.sh
+        mode: '0700'
+
+    - name: Install Helm
+      shell: /tmp/get_helm.sh
+      args:
+        creates: /usr/local/bin/helm
+
+    - name: Add Cilium Helm repository
+      become: false
+      shell: helm repo add cilium https://helm.cilium.io/
+      args:
+        executable: /bin/bash
+
+    - name: Download Cilium stable version file
+      get_url:
+        url: https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt
+        dest: /tmp/cilium-stable.txt
+        mode: '0644'
+
+    - name: Read Cilium version
+      command: cat /tmp/cilium-stable.txt
+      register: cilium_version_result
+      changed_when: false
+
+    - name: Set variables for Cilium CLI installation
+      set_fact:
+        cilium_cli_version: "{{ cilium_version_result.stdout | trim }}"
+
+    - name: Determine architecture
+      shell: if [ "$(uname -m)" = "aarch64" ]; then echo "arm64"; else echo "amd64"; fi
+      register: arch_result
+      changed_when: false
+
+    - name: Set architecture variable
+      set_fact:
+        cli_arch: "{{ arch_result.stdout }}"
+
+    - name: Download Cilium CLI
+      get_url:
+        url: "https://github.com/cilium/cilium-cli/releases/download/{{ cilium_cli_version }}/cilium-linux-{{ cli_arch }}.tar.gz"
+        dest: "/tmp/cilium-linux-{{ cli_arch }}.tar.gz"
+
+    - name: Download Cilium CLI checksum
+      get_url:
+        url: "https://github.com/cilium/cilium-cli/releases/download/{{ cilium_cli_version }}/cilium-linux-{{ cli_arch }}.tar.gz.sha256sum"
+        dest: "/tmp/cilium-linux-{{ cli_arch }}.tar.gz.sha256sum"
+
+    - name: Verify Cilium CLI checksum
+      shell: sha256sum --check /tmp/cilium-linux-{{ cli_arch }}.tar.gz.sha256sum
+      args:
+        chdir: /tmp
+      changed_when: false
+
+    - name: Install Cilium CLI
+      unarchive:
+        src: "/tmp/cilium-linux-{{ cli_arch }}.tar.gz"
+        dest: /usr/local/bin
+        remote_src: yes
+
+    - name: Clean up downloaded files
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - "/tmp/cilium-linux-{{ cli_arch }}.tar.gz"
+        - "/tmp/cilium-linux-{{ cli_arch }}.tar.gz.sha256sum"
+        - "/tmp/get_helm.sh"
+
+    - name: Install Cilium with Helm
+      become: false
+      shell: >
+        helm install cilium cilium/cilium --version 1.17.3 
+        --namespace kube-system 
+        --set hubble.enabled=true 
+        --set hubble.relay.enabled=true 
+        --set hubble.ui.enabled=true 
+        --set prometheus.enabled=true 
+        --set operator.prometheus.enabled=true 
+        --set hubble.metrics.enabledOpenMetrics=true 
+        --set hubble.metrics.enabled="{dns,drop,tcp,flow,port-distribution,icmp,httpV2:exemplars=true;labelsContext=source_ip\,source_namespace\,source_workload\,destination_ip\,destination_namespace\,destination_workload\,traffic_direction}"
+      args:
+        executable: /bin/bash

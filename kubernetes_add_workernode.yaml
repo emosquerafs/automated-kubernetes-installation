@@ -1,0 +1,51 @@
+---
+- name: Add Worker Nodes to Kubernetes Cluster
+  hosts: worker
+  become: true
+  vars:
+    api_endpoint: "{{ hostvars[groups['controller'][0]]['ansible_host'] }}"
+    api_port: 6443
+    token: "{{ hostvars[groups['controller'][0]]['kubeadm_token'] | default('') }}"
+
+  tasks:
+    - name: Get join token for worker nodes from control plane if not provided
+      block:
+        - name: Create token for workers
+          delegate_to: "{{ groups['controller'][0] }}"
+          command: kubeadm token create --ttl 2h --print-join-command
+          register: join_command_output
+          changed_when: false
+          when: token == ""
+          
+        - name: Extract token and full join command
+          set_fact:
+            token: "{{ join_command_output.stdout | regex_search('--token ([0-9a-z]+\\.[0-9a-z]+)', '\\1') | first }}"
+            join_command: "{{ join_command_output.stdout }}"
+          when: token == "" and join_command_output.stdout is defined
+
+    - name: Join worker node to cluster
+      command: >
+        kubeadm join {{ api_endpoint }}:{{ api_port }}
+        --token {{ token }} 
+        --discovery-token-unsafe-skip-ca-verification
+      register: join_output
+      failed_when: join_output.rc != 0 and "already exists" not in join_output.stderr
+      changed_when: join_output.rc == 0
+
+    - name: Ensure .kube directory exists
+      file:
+        path: "/home/{{ ansible_user }}/.kube"
+        state: directory
+        mode: '0755'
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+
+    - name: Copy kubeconfig from control plane
+      ansible.builtin.copy:
+        src: "/etc/kubernetes/admin.conf"
+        dest: "/home/{{ ansible_user }}/.kube/config"
+        mode: '0600'
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        remote_src: true
+      delegate_to: "{{ groups['controller'][0] }}"

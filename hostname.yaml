@@ -1,0 +1,37 @@
+---
+- name: Configure hostnames on servers
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Set the hostname
+      hostname:
+        name: "{{ inventory_hostname }}"
+
+    - name: Ensure /etc/hostname file is updated
+      copy:
+        content: "{{ inventory_hostname }}"
+        dest: /etc/hostname
+        owner: root
+        group: root
+        mode: 0644
+        
+    - name: Remove line ipv6 localhost
+      lineinfile:
+        state: absent
+        path: /etc/hosts
+        regexp: "^::1"
+
+    - name: Update /etc/hosts file - localhost entry
+      lineinfile:
+        state: present
+        path: /etc/hosts
+        regexp: "^127.0.0.1"
+        line: "127.0.0.1       localhost"
+
+    - name: Update /etc/hosts file - Add all inventory hosts
+      lineinfile:
+        state: present
+        path: /etc/hosts
+        line: "{{ hostvars[item].ansible_host }} {{ item }}"
+      loop: "{{ groups['all'] }}"
